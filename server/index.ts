@@ -327,6 +327,74 @@ app.put("/api/admin/share-page-ads/:slot", requireAuth, requireAdmin, async (req
   }
 });
 
+// Guest playback is resolved from the authoritative share link on every request.
+// The Cloudinary delivery URL stays server-side; clients only receive this API proxy URL.
+app.get("/api/share/:slug/play", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, u.display_name FROM share_links sl JOIN files f ON f.id = sl.file_id JOIN users u ON u.id = f.owner_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND f.mime_type LIKE 'video/%' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1",
+      [req.params.slug]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "This video is currently unavailable." });
+    const file = result.rows[0];
+    await pool.query("INSERT INTO file_events (file_id, event_type) VALUES ($1, 'play')", [file.id]);
+    return res.json({
+      ok: true,
+      file: { name: file.original_name, mimeType: file.mime_type, size: Number(file.size_bytes), createdAt: file.created_at, creator: file.display_name },
+      playbackUrl: `/api/share/${encodeURIComponent(req.params.slug)}/stream`
+    });
+  } catch (error) {
+    console.error("Guest playback lookup failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not prepare this video for playback." });
+  }
+});
+
+// Proxy video bytes through the API so link disable/expiry/deletion is checked for
+// every playback request, including byte-range requests made by Media3/ExoPlayer.
+app.get("/api/share/:slug/stream", async (req, res) => {
+  try {
+    if (!env.CLOUDINARY_URL) return res.status(503).json({ error: "Video storage is not configured." });
+    const result = await pool.query(
+      "SELECT f.storage_key, f.mime_type FROM share_links sl JOIN files f ON f.id = sl.file_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND f.mime_type LIKE 'video/%' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1",
+      [req.params.slug]
+    );
+    const file = result.rows[0];
+    if (!file?.storage_key) return res.status(404).json({ error: "This video is currently unavailable." });
+
+    cloudinary.config({ cloudinary_url: env.CLOUDINARY_URL });
+    const deliveryUrl = cloudinary.url(file.storage_key, { resource_type: "video", secure: true });
+    const headers: Record<string, string> = {};
+    if (typeof req.headers.range === "string") headers.Range = req.headers.range;
+    const upstream = await fetch(deliveryUrl, { headers, redirect: "follow" });
+    if (!upstream.ok && upstream.status !== 206) {
+      console.error("Cloudinary playback returned status:", upstream.status);
+      return res.status(upstream.status === 404 ? 404 : 502).json({ error: "Video stream is temporarily unavailable." });
+    }
+    res.status(upstream.status);
+    res.setHeader("Content-Type", file.mime_type || upstream.headers.get("content-type") || "application/octet-stream");
+    res.setHeader("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes");
+    res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+    for (const name of ["content-length", "content-range", "last-modified", "etag"]) {
+      const value = upstream.headers.get(name);
+      if (value) res.setHeader(name, value);
+    }
+    if (!upstream.body) return res.end();
+    const { Readable } = await import("node:stream");
+    const body = Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream);
+    req.on("close", () => body.destroy());
+    body.on("error", (error) => {
+      console.error("Video proxy stream failed:", error instanceof Error ? error.message : "Unknown error");
+      if (!res.headersSent) res.status(502);
+      res.destroy();
+    });
+    body.pipe(res);
+  } catch (error) {
+    console.error("Guest video stream failed:", error instanceof Error ? error.message : "Unknown error");
+    if (!res.headersSent) return res.status(502).json({ error: "Could not stream this video." });
+    return res.destroy();
+  }
+});
+
 app.get("/api/share/:slug", async (req, res) => {
   try {
     const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, u.display_name FROM share_links sl JOIN files f ON f.id = sl.file_id JOIN users u ON u.id = f.owner_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1", [req.params.slug]);
