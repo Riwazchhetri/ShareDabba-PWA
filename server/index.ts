@@ -112,7 +112,7 @@ app.post("/api/auth/google", async (req, res) => {
     const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : "";
     const subject = typeof claims.sub === "string" ? claims.sub : "";
     const verifiedEmail = claims.email_verified === true || claims.email_verified === "true";
-    if (claims.aud !== env.GOOGLE_CLIENT_ID || (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") || !Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000) || !verifiedEmail || !subject || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    if (claims.aud !== env.GOOGLE_CLIENT_ID || (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") || !Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000) || !verifiedEmail || !subject || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(401).json({ error: "Google account verification failed." });
     }
     const displayName = (typeof claims.name === "string" && claims.name.trim()) || (typeof claims.given_name === "string" && claims.given_name.trim()) || email.split("@")[0];
