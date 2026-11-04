@@ -143,7 +143,7 @@ export default function App() {
         {tab==="Dashboard" && <>
           <div className="stats">
             <Stat icon={<Files/>} label="Total files" value={String(items.length)} trend="Files in workspace"/>
-            <Stat icon={<Eye/>} label="Total views" value={items.reduce((a,b)=>a+b.views,0).toLocaleString()} trend="Demo analytics"/>
+            <Stat icon={<Eye/>} label="Link visits" value={items.reduce((a,b)=>a+b.views,0).toLocaleString()} trend="Share-page opens · not video plays"/>
             <Stat icon={<Wallet/>} label="Estimated earnings" value="₹0.00" trend="No real ad revenue connected"/>
             <Stat icon={<HardDrive/>} label="Storage used" value={fmt(total)} trend="Cloud storage"/>
           </div>
@@ -164,7 +164,7 @@ export default function App() {
       <button className="modalclose" onClick={()=>setSelected(null)}>×</button>
       <div className="filebig">{selected.type==="Video"?<Play/>:selected.type==="Document"?<FileText/>:selected.type==="Image"?<ImageIcon/>:<Archive/>}</div>
       <h2>{selected.name}</h2>
-      <p>{selected.type} · {fmt(selected.size)} · {selected.views.toLocaleString()} views</p>
+      <p>{selected.type} · {fmt(selected.size)} · {selected.views.toLocaleString()} link visits</p>
       <label className="renamefield">File name (keep the original extension)
         <input value={renameValue} onChange={e=>setRenameValue(e.target.value)} maxLength={180}/>
       </label>
@@ -182,5 +182,5 @@ export default function App() {
 }
 function Stat({icon,label,value,trend}:{icon:React.ReactNode,label:string,value:string,trend:string}){return <div className="stat"><div className="stat-top"><span>{label}</span><i>{icon}</i></div><strong>{value}</strong><small>{trend}</small></div>}
 function CheckRow({done=false,title,desc}:{done?:boolean,title:string,desc:string}){return <div className="checkrow"><span className={done?"check":"unchecked"}>{done&&<Check size={14}/>}</span><div><b>{title}</b><small>{desc}</small></div></div>}
-function FileRows({items,onSelect}:{items:FileItem[],onSelect:(x:FileItem)=>void}){return <div className="filelist">{items.length===0?<div className="empty">No files found.</div>:items.map(x=><div className="filerow" key={x.id}><div className={`fileicon ${x.type.toLowerCase()}`}>{x.type==="Video"?<Play size={18}/>:x.type==="Document"?<FileText size={18}/>:x.type==="Image"?<ImageIcon size={18}/>:<Archive size={18}/>}</div><div className="filename"><b>{x.name}</b><small>{x.type} · {fmt(x.size)} · {x.date}</small></div><div className="views">{x.views.toLocaleString()} <small>views</small></div><button className="iconbtn" onClick={()=>onSelect(x)}><MoreHorizontal size={19}/></button></div>)}</div>}
+function FileRows({items,onSelect}:{items:FileItem[],onSelect:(x:FileItem)=>void}){return <div className="filelist">{items.length===0?<div className="empty">No files found.</div>:items.map(x=><div className="filerow" key={x.id}><div className={`fileicon ${x.type.toLowerCase()}`}>{x.type==="Video"?<Play size={18}/>:x.type==="Document"?<FileText size={18}/>:x.type==="Image"?<ImageIcon size={18}/>:<Archive size={18}/>}</div><div className="filename"><b>{x.name}</b><small>{x.type} · {fmt(x.size)} · {x.date}</small></div><div className="views">{x.views.toLocaleString()} <small>opens</small></div><button className="iconbtn" onClick={()=>onSelect(x)}><MoreHorizontal size={19}/></button></div>)}</div>}
 function Placeholder({icon,title,desc}:{icon:React.ReactNode,title:string,desc:string}){return <section className="panel placeholder"><div className="placeholdericon">{icon}</div><h2>{title}</h2><p>{desc}</p><span className="demo-pill">PLANNED MODULE</span></section>}
