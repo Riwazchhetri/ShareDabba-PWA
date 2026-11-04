@@ -19,3 +19,9 @@
 .sharestatus span{display:inline-block;font-size:10px;font-weight:700;padding:5px 8px;border-radius:6px}
 .sharestatus .active{background:#eaf8f0;color:#278356}
 .sharestatus .paused{background:#fff3e9;color:#b56c26}
+
+
+.google-login{display:flex;justify-content:center;min-height:42px;margin:18px 0 14px}
+.google-login iframe{max-width:100%}
+.auth-divider{display:flex;align-items:center;gap:12px;color:#aaa7b7;font-size:9px;font-weight:800;letter-spacing:.09em;margin:12px 0 18px}
+.auth-divider:before,.auth-divider:after{content:"";height:1px;background:#eeecf3;flex:1}
