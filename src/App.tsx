@@ -14,7 +14,7 @@ export default function App() {
   const [mobile,setMobile] = useState(false);
   const [selected,setSelected] = useState<FileItem|null>(null);
   const [copied,setCopied] = useState(false);
-  const [uploadKey,setUploadKey] = useState("");
+
   const [uploadBusy,setUploadBusy] = useState(false);
   const [filesLoading,setFilesLoading] = useState(false);
   const [user,setUser] = useState<{id:string;email:string;display_name:string;role:string}|null>(null);
@@ -23,14 +23,14 @@ export default function App() {
   const [authName,setAuthName] = useState("");
   const [authEmail,setAuthEmail] = useState("");
   const [authPassword,setAuthPassword] = useState("");
-  const [authBusy,setAuthBusy] = useState(false);
+  const [authBusy,setAuthBusy] = useState(false);\n  const [share,setShare] = useState<any>(null);\n  const [shareError,setShareError] = useState("");\n  const shareSlug = window.location.pathname.match(/^\\/s\\/([a-zA-Z0-9]+)/)?.[1];\n  useEffect(() => { if (!shareSlug) return; fetch(`/api/share/${shareSlug}`).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Link unavailable");setShare(d.file);}).catch(e=>setShareError(e.message||"Link unavailable")); }, [shareSlug]);
   useEffect(() => { fetch("/api/auth/me").then(r=>r.ok?r.json():null).then(d=>setUser(d?.user||null)).catch(()=>setUser(null)).finally(()=>setAuthChecking(false)); }, []);
   const submitAuth = async (e:React.FormEvent) => {
     e.preventDefault(); setAuthBusy(true); setNotice("");
-    try { const response=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:authName,email:authEmail,password:authPassword})}); const data=await response.json(); if(!response.ok) throw new Error(data.error||"Authentication failed"); setUser(data.user); setUploadKey(""); setItems([]); setNotice(authMode==="register"?"Your creator account is ready.":"Welcome back."); }
+    try { const response=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:authName,email:authEmail,password:authPassword})}); const data=await response.json(); if(!response.ok) throw new Error(data.error||"Authentication failed"); setUser(data.user); setItems([]); setNotice(authMode==="register"?"Your creator account is ready.":"Welcome back."); }
     catch(error){setNotice(error instanceof Error?error.message:"Could not sign in.");} finally{setAuthBusy(false);}
   };
-  const signOut = async () => { await fetch("/api/auth/logout",{method:"POST"}); setUser(null); setItems([]); setUploadKey(""); setTab("Dashboard"); };
+  const signOut = async () => { await fetch("/api/auth/logout",{method:"POST"}); setUser(null); setItems([]);  setTab("Dashboard"); };
   useEffect(() => {
     if (!user) return;
     let active = true;
@@ -59,7 +59,7 @@ export default function App() {
         const result = await response.json();
         if(!response.ok) throw new Error(result.error || "Upload failed");
         const remote = result.file;
-        added.push({id:crypto.randomUUID(),name:remote.name,type:remote.resourceType==="video"?"Video":remote.resourceType==="image"?"Image":remote.mimeType.includes("pdf")?"Document":remote.name.toLowerCase().endsWith(".zip")?"Archive":"File",size:remote.bytes,date:"Just now",views:0,slug:remote.slug,url:remote.shareUrl});
+        added.push({id:remote.id,name:remote.name,type:remote.resourceType==="video"?"Video":remote.resourceType==="image"?"Image":remote.mimeType.includes("pdf")?"Document":remote.name.toLowerCase().endsWith(".zip")?"Archive":"File",size:remote.bytes,date:"Just now",views:0,slug:remote.slug,url:`${window.location.origin}/s/${remote.slug}`});
       }
       setItems(v=>[...added,...v]); setTab("My Files");
       setNotice(`${added.length} file(s) uploaded and saved to your creator account.`);
@@ -68,7 +68,7 @@ export default function App() {
     } finally { setUploadBusy(false); }
   };
   const total = items.reduce((a,b)=>a+b.size,0);
-  if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
+  if (shareSlug) return <div className="authscreen"><div className="authcard sharecard"><div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span></div>{share?<><div className="filebig"><Play/></div><h1>{share.name}</h1><p>Shared by {share.creator} · {fmt(share.size)}</p><div className="sharecta">To watch this video, open it in the ShareDabba Player app.</div><a className="primary full appopen" href={`sharedabba://play/${shareSlug}`}>Open in ShareDabba Player</a><small className="muted">The website does not play or expose the original video file.</small></>:<p>{shareError||"Loading shared file…"}</p>}</div></div>;\n  if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
   if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p>{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
   return <div className="shell">
     <aside className={`sidebar ${mobile?"show":""}`}>
@@ -102,7 +102,7 @@ export default function App() {
         <footer>© 2026 ShareDabba · Prototype workspace <span>Built for file hosting, not a social video feed.</span></footer>
       </div>
     </main>
-    {selected && <div className="modalback" onClick={()=>setSelected(null)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="modalclose" onClick={()=>setSelected(null)}>×</button><div className="filebig">{selected.type==="Video"?<Play/>:selected.type==="Document"?<FileText/>:selected.type==="Image"?<ImageIcon/>:<Archive/>}</div><h2>{selected.name}</h2><p>{selected.type} · {fmt(selected.size)} · {selected.views.toLocaleString()} views</p><div className="sharebox">{selected.url || `sharedabba.example/s/${selected.slug}`}</div><button className="primary full" onClick={()=>{navigator.clipboard?.writeText(selected.url || `sharedabba.example/s/${selected.slug}`);setCopied(true)}}>{copied?<Check size={16}/>:<Copy size={16}/>} {copied?"Copied":"Copy share link"}</button><small className="muted">Cloudinary delivery URL. Public share-page routing will be added next.</small></div></div>}
+    {selected && <div className="modalback" onClick={()=>setSelected(null)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="modalclose" onClick={()=>setSelected(null)}>×</button><div className="filebig">{selected.type==="Video"?<Play/>:selected.type==="Document"?<FileText/>:selected.type==="Image"?<ImageIcon/>:<Archive/>}</div><h2>{selected.name}</h2><p>{selected.type} · {fmt(selected.size)} · {selected.views.toLocaleString()} views</p><div className="sharebox">{selected.url || `${window.location.origin}/s/${selected.slug}`}</div><button className="primary full" onClick={()=>{navigator.clipboard?.writeText(selected.url || `${window.location.origin}/s/${selected.slug}`);setCopied(true)}}>{copied?<Check size={16}/>:<Copy size={16}/>} {copied?"Copied":"Copy share link"}</button><small className="muted">Visitors can view this page, but video playback will require the ShareDabba Player app.</small></div></div>}
   </div>;
 }
 function Stat({icon,label,value,trend}:{icon:React.ReactNode,label:string,value:string,trend:string}){return <div className="stat"><div className="stat-top"><span>{label}</span><i>{icon}</i></div><strong>{value}</strong><small>{trend}</small></div>}
