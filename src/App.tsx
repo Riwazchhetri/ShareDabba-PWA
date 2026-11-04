@@ -14,10 +14,12 @@ export default function App() {
   const [tab,setTab] = useState("Dashboard");
   const [items,setItems] = useState(initial);
   const [query,setQuery] = useState("");
-  const [notice,setNotice] = useState("Prototype mode — files stay in this browser and are not uploaded to cloud storage.");
+  const [notice,setNotice] = useState("Cloud uploads are enabled. Use your private upload key to send files to Cloudinary.");
   const [mobile,setMobile] = useState(false);
   const [selected,setSelected] = useState<FileItem|null>(null);
-  const [copied,setCopied] = useState(false);\n  const [uploadKey,setUploadKey] = useState("");\n  const [uploadBusy,setUploadBusy] = useState(false);
+  const [copied,setCopied] = useState(false);
+  const [uploadKey,setUploadKey] = useState("");
+  const [uploadBusy,setUploadBusy] = useState(false);
   const filtered = useMemo(()=>items.filter(x=>x.name.toLowerCase().includes(query.toLowerCase())),[items,query]);
   const upload = async (list:FileList|null) => {
     if(!list?.length) return;
@@ -58,7 +60,7 @@ export default function App() {
             <Stat icon={<Files/>} label="Total files" value={String(items.length)} trend="Files in workspace"/>
             <Stat icon={<Eye/>} label="Total views" value={items.reduce((a,b)=>a+b.views,0).toLocaleString()} trend="Demo analytics"/>
             <Stat icon={<Wallet/>} label="Estimated earnings" value="₹0.00" trend="No real ad revenue connected"/>
-            <Stat icon={<HardDrive/>} label="Storage used" value={fmt(total)} trend="Local prototype only"/>
+            <Stat icon={<HardDrive/>} label="Storage used" value={fmt(total)} trend="Cloud storage"/>
           </div>
           <div className="grid2"><section className="panel"><div className="panelhead"><div><h3>Recent files</h3><p>Your latest uploads</p></div><button className="textbtn" onClick={()=>setTab("My Files")}>View all</button></div><FileRows items={items.slice(0,4)} onSelect={setSelected}/></section>
           <section className="panel"><div className="panelhead"><div><h3>Getting started</h3><p>Prepare your creator workspace</p></div><span className="stepcount">1/4</span></div><CheckRow done title="Workspace created" desc="Your ShareDabba prototype is ready."/><CheckRow title="Connect cloud storage" desc="Required for persistent file hosting."/><CheckRow title="Configure ad provider" desc="Only count verified ad impressions."/><CheckRow title="Enable creator payouts" desc="After real revenue and compliance checks."/></section></div>
