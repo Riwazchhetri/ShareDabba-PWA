@@ -109,7 +109,7 @@ app.post("/api/auth/firebase", async (req, res) => {
     const payload = await verified.json() as { users?: Array<Record<string, unknown>> };
     const claims = payload.users?.[0];
     const email = typeof claims?.email === "string" ? claims.email.trim().toLowerCase() : "";
-    if (!claims || claims.emailVerified !== true || typeof claims.localId !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return res.status(401).json({ error: "Your Google account email must be verified before signing in." });
+    if (!claims || claims.emailVerified !== true || typeof claims.localId !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(401).json({ error: "Your Google account email must be verified before signing in." });
     const displayName = (typeof claims.displayName === "string" && claims.displayName.trim()) || email.split("@")[0];
     let result = await pool.query("INSERT INTO users (email, password_hash, display_name, role, status) VALUES ($1, $2, $3, 'creator', 'active') ON CONFLICT (email) DO NOTHING RETURNING id, email, display_name, role, status", [email, hashPassword(randomBytes(32).toString("base64url")), displayName.slice(0, 60)]);
     let user = result.rows[0];
