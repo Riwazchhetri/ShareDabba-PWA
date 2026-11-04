@@ -33,6 +33,8 @@ export default function App() {
   const [authEmail,setAuthEmail] = useState("");
   const [authPassword,setAuthPassword] = useState("");
   const [authBusy,setAuthBusy] = useState(false);
+  const [profileName,setProfileName] = useState("");
+  const [profileBusy,setProfileBusy] = useState(false);
   const [share,setShare] = useState<any>(null);
   const [shareError,setShareError] = useState("");
   const shareSlug = window.location.pathname.match(/^\/s\/([a-zA-Z0-9]+)/)?.[1];
@@ -97,6 +99,21 @@ export default function App() {
     } finally {
       setAuthBusy(false);
     }
+  };
+
+  const saveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setProfileBusy(true); setNotice("");
+    try {
+      const response = await fetch("/api/account/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName: profileName }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not update your profile.");
+      setUser(data.user);
+      setNotice("Profile name updated successfully.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not update your profile.");
+    } finally { setProfileBusy(false); }
   };
 
   const signOut = async () => { await fetch("/api/auth/logout",{method:"POST"}); setUser(null); setItems([]);  setTab("Dashboard"); };
@@ -218,7 +235,19 @@ export default function App() {
         {tab==="Upload" && <section className="panel uploadpanel"><div className="drop"><UploadCloud size={38}/><h2>Upload your files</h2><p>Choose videos, APKs, PDFs, ZIPs, images and other files.</p><label className="uploadbtn"><Plus size={17}/> Choose files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label><small>Files are uploaded to Cloudinary and saved in your database. Maximum file size: 100 MB per file. Your uploads are private to your account.</small>{filesLoading&&<small>Loading your saved files…</small>}{uploadBusy&&<small>Uploading to cloud… please keep this page open.</small>}</div></section>}
         {tab==="Withdrawals" && <Placeholder icon={<Wallet/>} title="Creator withdrawals" desc="Withdrawal requests will become available after verified advertising revenue, creator balances and payment-provider integration are configured."/>}
         {tab==="Referrals" && <Placeholder icon={<Users/>} title="Referral tracking" desc="Referral links, attribution and eligible commission rules will be added after account authentication is connected."/>}
-        {tab==="Settings" && <Placeholder icon={<Settings/>} title="Workspace settings" desc="Profile, security, storage provider and monetization preferences will be configured in the connected production backend."/>}
+        {tab==="Settings" && <div className="settings-stack">
+          <section className="panel settings-panel"><div className="panelhead"><div><h3>Profile information</h3><p>Update the name shown on your creator workspace.</p></div><span className="demo-pill">ACCOUNT</span></div>
+            <form className="settings-form" onSubmit={saveProfile}>
+              <label>Display name<input value={profileName || user.display_name} onChange={e=>setProfileName(e.target.value)} minLength={2} maxLength={60} required/></label>
+              <label>Email address<input value={user.email} readOnly disabled/><small>Your sign-in email cannot be changed here.</small></label>
+              <button className="primary" disabled={profileBusy}>{profileBusy?"Saving…":"Save profile"}</button>
+            </form>
+          </section>
+          <section className="panel settings-panel"><div className="panelhead"><div><h3>Account security</h3><p>Keep your account details private and secure.</p></div></div>
+            <div className="security-note"><ShieldCheck size={19}/><span><b>Protected session</b><small>ShareDabba uses a secure, HTTP-only session cookie. Sign out on shared devices.</small></span></div>
+            <button className="secondary settings-signout" onClick={signOut}>Sign out of this device</button>
+          </section>
+        </div>}
         {tab==="Admin panel" && <Placeholder icon={<ShieldCheck/>} title="Admin controls" desc="This preview does not grant admin access or modify users. Production admin roles and audit logs must be enforced server-side."/>}
         <footer>© 2026 ShareDabba · Prototype workspace <span>Built for file hosting, not a social video feed.</span></footer>
       </div>
