@@ -8,7 +8,8 @@ import { env } from "./config.js";
 import { checkDatabase, pool } from "./db.js";
 import { v2 as cloudinary } from "cloudinary";
 
-const app = express();\nconst UPLOAD_OWNER_ID = "a47e8c0a-a4d1-41eb-bba7-d7b4ed06e26b";
+const app = express();
+const UPLOAD_OWNER_ID = "a47e8c0a-a4d1-41eb-bba7-d7b4ed06e26b";
 const webDirectory = path.resolve(process.cwd(), "dist/web");
 const webIndex = path.join(webDirectory, "index.html");
 
