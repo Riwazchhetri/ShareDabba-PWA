@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, getRedirectResult, signInWithRedirect, setPersistence, browserLocalPersistence, onAuthStateChanged } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, getRedirectResult, signInWithRedirect, signInWithPopup, setPersistence, browserLocalPersistence, onAuthStateChanged } from "firebase/auth";
 
 const firebaseApp = initializeApp({ apiKey: "AIzaSyDmXaqI47Ps0XEdm6LcNG9YVJ6F_1OxZ8U", authDomain: "sharedabba-login.firebaseapp.com", projectId: "sharedabba-login", storageBucket: "sharedabba-login.firebasestorage.app", messagingSenderId: "79368523457", appId: "1:79368523457:web:6b1ba06ae4776964674e40" });
 const firebaseAuth = getAuth(firebaseApp);
@@ -75,13 +75,27 @@ export default function App() {
   }, []);
 
   const signInWithGoogle = async () => {
-    setAuthBusy(true); setNotice("Redirecting to Google securely…");
+    setAuthBusy(true); setNotice("Opening Google sign-in…");
     try {
       await setPersistence(firebaseAuth, browserLocalPersistence);
-      await signInWithRedirect(firebaseAuth, googleProvider);
-    } catch (error) {
+      const credential = await signInWithPopup(firebaseAuth, googleProvider);
+      await finishFirebaseSignIn(credential.user);
+      setNotice("You're signed in with Google.");
+    } catch (error: any) {
+      const code = typeof error?.code === "string" ? error.code : "";
+      if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request" || code === "auth/popup-closed-by-user") {
+        setNotice("Google's sign-in window was blocked or closed. Trying the full-page Google sign-in…");
+        try {
+          await signInWithRedirect(firebaseAuth, googleProvider);
+          return;
+        } catch (redirectError) {
+          setNotice(redirectError instanceof Error ? redirectError.message : "Google redirect could not start. Open ShareDabba in Chrome and try again.");
+        }
+      } else {
+        setNotice(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
+      }
+    } finally {
       setAuthBusy(false);
-      setNotice(error instanceof Error ? error.message : "Could not start Google sign-in. Please check your browser settings.");
     }
   };
 
