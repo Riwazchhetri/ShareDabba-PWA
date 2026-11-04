@@ -10,18 +10,32 @@ export default function App() {
   const [tab,setTab] = useState("Dashboard");
   const [items,setItems] = useState(initial);
   const [query,setQuery] = useState("");
-  const [notice,setNotice] = useState("Cloud uploads are enabled. Use your private upload key to send files to Cloudinary.");
+  const [notice,setNotice] = useState("Cloud uploads are enabled. Upload files to your creator account.");
   const [mobile,setMobile] = useState(false);
   const [selected,setSelected] = useState<FileItem|null>(null);
   const [copied,setCopied] = useState(false);
   const [uploadKey,setUploadKey] = useState("");
   const [uploadBusy,setUploadBusy] = useState(false);
   const [filesLoading,setFilesLoading] = useState(false);
+  const [user,setUser] = useState<{id:string;email:string;display_name:string;role:string}|null>(null);
+  const [authChecking,setAuthChecking] = useState(true);
+  const [authMode,setAuthMode] = useState<"login"|"register">("register");
+  const [authName,setAuthName] = useState("");
+  const [authEmail,setAuthEmail] = useState("");
+  const [authPassword,setAuthPassword] = useState("");
+  const [authBusy,setAuthBusy] = useState(false);
+  useEffect(() => { fetch("/api/auth/me").then(r=>r.ok?r.json():null).then(d=>setUser(d?.user||null)).catch(()=>setUser(null)).finally(()=>setAuthChecking(false)); }, []);
+  const submitAuth = async (e:React.FormEvent) => {
+    e.preventDefault(); setAuthBusy(true); setNotice("");
+    try { const response=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:authName,email:authEmail,password:authPassword})}); const data=await response.json(); if(!response.ok) throw new Error(data.error||"Authentication failed"); setUser(data.user); setUploadKey(""); setItems([]); setNotice(authMode==="register"?"Your creator account is ready.":"Welcome back."); }
+    catch(error){setNotice(error instanceof Error?error.message:"Could not sign in.");} finally{setAuthBusy(false);}
+  };
+  const signOut = async () => { await fetch("/api/auth/logout",{method:"POST"}); setUser(null); setItems([]); setUploadKey(""); setTab("Dashboard"); };
   useEffect(() => {
-    if (!uploadKey.trim()) return;
+    if (!user) return;
     let active = true;
     setFilesLoading(true);
-    fetch("/api/files", { headers: { "x-upload-key": uploadKey.trim() } })
+    fetch("/api/files")
       .then(async response => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load files");
@@ -30,30 +44,32 @@ export default function App() {
       .catch(error => { if (active) setNotice(error instanceof Error ? error.message : "Could not load saved files."); })
       .finally(() => { if (active) setFilesLoading(false); });
     return () => { active = false; };
-  }, [uploadKey]);
+  }, [user]);
   const filtered = useMemo(()=>items.filter(x=>x.name.toLowerCase().includes(query.toLowerCase())),[items,query]);
   const upload = async (list:FileList|null) => {
     if(!list?.length) return;
-    if(!uploadKey.trim()) { setNotice("Enter your private upload access key in the Upload section first."); setTab("Upload"); return; }
+    if(!user) { setNotice("Please sign in first."); return; }
     setUploadBusy(true);
     const added: FileItem[] = [];
     try {
       for (const file of Array.from(list)) {
         const body = new FormData();
         body.append("file", file);
-        const response = await fetch("/api/files/upload", { method:"POST", headers:{"x-upload-key":uploadKey.trim()}, body });
+        const response = await fetch("/api/files/upload", { method:"POST", headers:{}, body });
         const result = await response.json();
         if(!response.ok) throw new Error(result.error || "Upload failed");
         const remote = result.file;
         added.push({id:crypto.randomUUID(),name:remote.name,type:remote.resourceType==="video"?"Video":remote.resourceType==="image"?"Image":remote.mimeType.includes("pdf")?"Document":remote.name.toLowerCase().endsWith(".zip")?"Archive":"File",size:remote.bytes,date:"Just now",views:0,slug:remote.slug,url:remote.shareUrl});
       }
       setItems(v=>[...added,...v]); setTab("My Files");
-      setNotice(`${added.length} file(s) uploaded to Cloudinary and saved in your ShareDabba database.`);
+      setNotice(`${added.length} file(s) uploaded and saved to your creator account.`);
     } catch(error) {
       setNotice(error instanceof Error ? error.message : "Upload failed. Please try again.");
     } finally { setUploadBusy(false); }
   };
   const total = items.reduce((a,b)=>a+b.size,0);
+  if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
+  if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p>{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
   return <div className="shell">
     <aside className={`sidebar ${mobile?"show":""}`}>
       <div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span><button className="close" onClick={()=>setMobile(false)}>×</button></div>
@@ -62,7 +78,7 @@ export default function App() {
       <div className="side-bottom"><div className="storage-head"><HardDrive size={16}/> Storage usage</div><div className="progress"><span style={{width:"18%"}}/></div><small>Prototype usage · {fmt(total)}</small><div className="plan">Free prototype <span>Preview</span></div></div>
     </aside>
     <main className="main">
-      <header className="topbar"><button className="iconbtn mobilemenu" onClick={()=>setMobile(true)}><Menu/></button><div className="crumb">Workspace <span>/</span> {tab}</div><div className="topright"><button className="iconbtn"><Bell size={18}/></button><div className="avatar">SD</div></div></header>
+      <header className="topbar"><button className="iconbtn mobilemenu" onClick={()=>setMobile(true)}><Menu/></button><div className="crumb">Workspace <span>/</span> {tab}</div><div className="topright"><button className="iconbtn"><Bell size={18}/></button><div className="avatar" title={user.display_name}>{user.display_name.slice(0,2).toUpperCase()}</div><button className="textbtn" onClick={signOut}>Sign out</button></div></header>
       <div className="content">
         <div className="welcome"><div><div className="eyebrow">CREATOR WORKSPACE</div><h1>{tab==="Dashboard"?"Welcome to ShareDabba":tab}</h1><p>Manage your files, sharing links and creator activity.</p></div><label className="uploadbtn"><Plus size={17}/> Upload files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label></div>
         <div className="notice"><span className="notice-dot"/> {notice}</div>
@@ -78,7 +94,7 @@ export default function App() {
           <section className="panel"><div className="panelhead"><div><h3>Monetization overview</h3><p>Illustrative layout — not actual earnings</p></div><span className="demo-pill">DEMO DATA</span></div><div className="emptychart"><TrendingUp size={26}/><b>Connect advertising to see verified revenue</b><span>Views, ad impressions and payable earnings will be tracked separately.</span></div></section>
         </>}
         {tab==="My Files" && <section className="panel"><div className="panelhead"><div><h3>All files</h3><p>Manage your uploaded content</p></div><div className="search"><Search size={16}/><input placeholder="Search files..." value={query} onChange={e=>setQuery(e.target.value)}/></div></div><FileRows items={filtered} onSelect={setSelected}/></section>}
-        {tab==="Upload" && <section className="panel uploadpanel"><div className="drop"><UploadCloud size={38}/><h2>Upload your files</h2><p>Choose videos, APKs, PDFs, ZIPs, images and other files.</p><label className="uploadbtn"><Plus size={17}/> Choose files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label><label className="keyfield">Private upload access key<input type="password" value={uploadKey} onChange={e=>setUploadKey(e.target.value)} placeholder="Paste your private upload key" autoComplete="off"/></label><small>Files are uploaded to Cloudinary and saved in your database. Maximum file size: 100 MB per file. Keep your access key private.</small>{filesLoading&&<small>Loading your saved files…</small>}{uploadBusy&&<small>Uploading to cloud… please keep this page open.</small>}</div></section>}
+        {tab==="Upload" && <section className="panel uploadpanel"><div className="drop"><UploadCloud size={38}/><h2>Upload your files</h2><p>Choose videos, APKs, PDFs, ZIPs, images and other files.</p><label className="uploadbtn"><Plus size={17}/> Choose files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label><small>Files are uploaded to Cloudinary and saved in your database. Maximum file size: 100 MB per file. Your uploads are private to your account.</small>{filesLoading&&<small>Loading your saved files…</small>}{uploadBusy&&<small>Uploading to cloud… please keep this page open.</small>}</div></section>}
         {tab==="Withdrawals" && <Placeholder icon={<Wallet/>} title="Creator withdrawals" desc="Withdrawal requests will become available after verified advertising revenue, creator balances and payment-provider integration are configured."/>}
         {tab==="Referrals" && <Placeholder icon={<Users/>} title="Referral tracking" desc="Referral links, attribution and eligible commission rules will be added after account authentication is connected."/>}
         {tab==="Settings" && <Placeholder icon={<Settings/>} title="Workspace settings" desc="Profile, security, storage provider and monetization preferences will be configured in the connected production backend."/>}
