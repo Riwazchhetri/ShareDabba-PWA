@@ -147,6 +147,18 @@ app.get("/api/files", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/share/:slug", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT f.original_name, f.mime_type, f.size_bytes, f.created_at, u.display_name FROM share_links sl JOIN files f ON f.id = sl.file_id JOIN users u ON u.id = f.owner_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1", [req.params.slug]);
+    if (!result.rows[0]) return res.status(404).json({ error: "This share link is unavailable." });
+    const file = result.rows[0];
+    return res.json({ ok: true, file: { name: file.original_name, mimeType: file.mime_type, size: Number(file.size_bytes), createdAt: file.created_at, creator: file.display_name } });
+  } catch (error) {
+    console.error("Share lookup failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not load this share link." });
+  }
+});
+
 app.get("/api/storage/status", async (_req, res) => {
   if (!env.CLOUDINARY_URL) return res.status(503).json({ ok: false, storage: "not_configured", provider: "cloudinary" });
   try { cloudinary.config({ cloudinary_url: env.CLOUDINARY_URL }); await cloudinary.api.ping(); return res.json({ ok: true, storage: "connected", provider: "cloudinary" }); }
