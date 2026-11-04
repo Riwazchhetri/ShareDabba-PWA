@@ -7,6 +7,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url().optional(),
   DATABASE_SSL: z.enum(["true", "false"]).default("false"),
   CLOUDINARY_URL: z.string().optional(),
+  UPLOAD_ACCESS_KEY: z.string().min(32).optional(),
   WEB_ORIGIN: z.string().default("http://localhost:5173")
 });
 
