@@ -120,6 +120,20 @@ app.post("/api/auth/firebase", async (req, res) => {
   } catch (error) { console.error("Firebase sign-in failed:", error instanceof Error ? error.message : "Unknown error"); return res.status(500).json({ error: "Firebase sign-in failed. Please try again." }); }
 });
 
+app.patch("/api/account/profile", requireAuth, async (req, res) => {
+  const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim() : "";
+  if (displayName.length < 2 || displayName.length > 60) return res.status(400).json({ error: "Name must be between 2 and 60 characters." });
+  try {
+    const user = (req as any).user;
+    const result = await pool.query("UPDATE users SET display_name = $1 WHERE id = $2 AND status = 'active' RETURNING id, email, display_name, role", [displayName, user.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: "Account not found." });
+    return res.json({ ok: true, user: result.rows[0] });
+  } catch (error) {
+    console.error("Profile update failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not update your profile. Please try again." });
+  }
+});
+
 app.post("/api/auth/logout", (_req, res) => { res.setHeader("Set-Cookie", sessionCookie("", 0)); res.json({ ok: true }); });
 app.get("/api/auth/me", requireAuth, (req, res) => res.json({ ok: true, user: (req as any).user }));
 
