@@ -4,6 +4,7 @@ import helmet from "helmet";
 import path from "node:path";
 import { env } from "./config.js";
 import { checkDatabase, pool } from "./db.js";
+import { v2 as cloudinary } from "cloudinary";
 
 const app = express();
 const webDirectory = path.resolve(process.cwd(), "dist/web");
@@ -21,6 +22,20 @@ app.get("/api/health", (_req, res) => {
     environment: env.NODE_ENV,
     timestamp: new Date().toISOString()
   });
+});
+
+app.get("/api/storage/status", async (_req, res) => {
+  if (!env.CLOUDINARY_URL) {
+    return res.status(503).json({ ok: false, storage: "not_configured", provider: "cloudinary" });
+  }
+  try {
+    cloudinary.config({ cloudinary_url: env.CLOUDINARY_URL });
+    await cloudinary.api.ping();
+    return res.json({ ok: true, storage: "connected", provider: "cloudinary" });
+  } catch (error) {
+    console.error("Cloudinary connection check failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(503).json({ ok: false, storage: "connection_failed", provider: "cloudinary" });
+  }
 });
 
 app.get("/api/ready", async (_req, res) => {
