@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import path from "node:path";
+import multer from "multer";
+import { timingSafeEqual } from "node:crypto";
 import { env } from "./config.js";
 import { checkDatabase, pool } from "./db.js";
 import { v2 as cloudinary } from "cloudinary";
@@ -22,6 +24,66 @@ app.get("/api/health", (_req, res) => {
     environment: env.NODE_ENV,
     timestamp: new Date().toISOString()
   });
+});
+
+const uploadMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024, files: 1 },
+});
+
+function hasValidUploadKey(value: string | undefined): boolean {
+  const expected = env.UPLOAD_ACCESS_KEY;
+  if (!expected || !value) return false;
+  const suppliedBuffer = Buffer.from(value);
+  const expectedBuffer = Buffer.from(expected);
+  return suppliedBuffer.length === expectedBuffer.length && timingSafeEqual(suppliedBuffer, expectedBuffer);
+}
+
+app.post("/api/files/upload", (req, res, next) => {
+  if (!hasValidUploadKey(req.header("x-upload-key"))) {
+    return res.status(401).json({ error: "Upload access key is missing or invalid." });
+  }
+  next();
+}, uploadMiddleware.single("file"), async (req, res) => {
+  if (!env.CLOUDINARY_URL) {
+    return res.status(503).json({ error: "Cloud storage is not configured." });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "Choose a file to upload." });
+  }
+
+  try {
+    cloudinary.config({ cloudinary_url: env.CLOUDINARY_URL });
+    const resourceType = req.file.mimetype.startsWith("video/") ? "video"
+      : req.file.mimetype.startsWith("image/") ? "image" : "raw";
+    const uploaded = await new Promise<any>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream({
+        folder: "sharedabba",
+        resource_type: resourceType,
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false,
+        ...(resourceType === "raw" ? { access_mode: "authenticated" } : {}),
+      }, (error, result) => error ? reject(error) : resolve(result));
+      stream.end(req.file!.buffer);
+    });
+    return res.status(201).json({
+      ok: true,
+      file: {
+        name: req.file.originalname,
+        size: req.file.size,
+        mimeType: req.file.mimetype,
+        resourceType: uploaded.resource_type,
+        publicId: uploaded.public_id,
+        url: uploaded.secure_url,
+        bytes: uploaded.bytes,
+        format: uploaded.format
+      }
+    });
+  } catch (error) {
+    console.error("Cloudinary upload failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(502).json({ error: "Cloud upload failed. Please try again." });
+  }
 });
 
 app.get("/api/storage/status", async (_req, res) => {
