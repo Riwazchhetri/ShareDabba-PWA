@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { env } from "./config";
+import { env } from "./config.js";
 import { checkDatabase, pool } from "./db";
 
 const app = express();
