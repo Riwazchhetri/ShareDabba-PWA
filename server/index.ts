@@ -134,17 +134,96 @@ app.post("/api/files/upload", requireAuth, uploadMiddleware.single("file"), asyn
 app.get("/api/files", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
-    const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, sl.slug FROM files f LEFT JOIN share_links sl ON sl.file_id = f.id AND sl.is_active = true WHERE f.owner_id = $1 AND f.status = 'ready' ORDER BY f.created_at DESC LIMIT 200", [user.id]);
+    const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, sl.slug, sl.is_active AS share_active FROM files f LEFT JOIN share_links sl ON sl.file_id = f.id WHERE f.owner_id = $1 AND f.status = 'ready' ORDER BY f.created_at DESC LIMIT 200", [user.id]);
     const files = result.rows.map(row => {
       const extension = path.extname(row.original_name).toLowerCase();
       const type = row.mime_type?.startsWith("video/") ? "Video" : row.mime_type?.startsWith("image/") ? "Image" : row.mime_type?.includes("pdf") ? "Document" : [".zip", ".apk", ".rar", ".7z"].includes(extension) ? "Archive" : "File";
-      return { id: row.id, name: row.original_name, type, size: Number(row.size_bytes), date: row.created_at, views: 0, slug: row.slug };
+      return { id: row.id, name: row.original_name, type, size: Number(row.size_bytes), date: row.created_at, views: 0, slug: row.slug, shareActive: row.share_active !== false };
     });
     return res.json({ ok: true, files });
   } catch (error) {
     console.error("File list failed:", error instanceof Error ? error.message : "Unknown error");
     return res.status(500).json({ error: "Could not load saved files." });
   }
+});
+
+app.patch("/api/files/:id", requireAuth, async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name || name.length > 180 || /[\\/\\\\\\u0000-\\u001f\\u007f]/.test(name)) {
+    return res.status(400).json({ error: "Enter a valid file name (up to 180 characters)." });
+  }
+  try {
+    const user = (req as any).user;
+    const existing = await pool.query("SELECT id, original_name, extension FROM files WHERE id = $1 AND owner_id = $2 AND status = 'ready' LIMIT 1", [req.params.id, user.id]);
+    if (!existing.rows[0]) return res.status(404).json({ error: "File not found." });
+    const previousExtension = String(existing.rows[0].extension || path.extname(existing.rows[0].original_name).replace(/^\\./, "") || "").toLowerCase();
+    const requestedExtension = path.extname(name).replace(/^\\./, "").toLowerCase();
+    if (previousExtension !== requestedExtension) return res.status(400).json({ error: "Keep the original file extension when renaming." });
+    const updated = await pool.query("UPDATE files SET original_name = $1 WHERE id = $2 AND owner_id = $3 AND status = 'ready' RETURNING id, original_name", [name, req.params.id, user.id]);
+    return res.json({ ok: true, file: { id: updated.rows[0].id, name: updated.rows[0].original_name } });
+  } catch (error) {
+    console.error("File rename failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not rename this file." });
+  }
+});
+
+app.patch("/api/files/:id/share", requireAuth, async (req, res) => {
+  if (typeof req.body?.active !== "boolean") return res.status(400).json({ error: "Share status must be true or false." });
+  try {
+    const user = (req as any).user;
+    const updated = await pool.query(
+      "UPDATE share_links sl SET is_active = $1 FROM files f WHERE sl.file_id = f.id AND f.id = $2 AND f.owner_id = $3 AND f.status = 'ready' RETURNING sl.slug, sl.is_active",
+      [req.body.active, req.params.id, user.id]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ error: "File or share link not found." });
+    return res.json({ ok: true, share: { slug: updated.rows[0].slug, active: updated.rows[0].is_active } });
+  } catch (error) {
+    console.error("Share-link update failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not update the share link." });
+  }
+});
+
+app.delete("/api/files/:id", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const client = await pool.connect();
+  let storageKey = "";
+  let mimeType = "";
+  try {
+    await client.query("BEGIN");
+    const existing = await client.query(
+      "SELECT storage_key, mime_type FROM files WHERE id = $1 AND owner_id = $2 AND status = 'ready' FOR UPDATE",
+      [req.params.id, user.id]
+    );
+    if (!existing.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "File not found." });
+    }
+    storageKey = existing.rows[0].storage_key;
+    mimeType = existing.rows[0].mime_type || "";
+    await client.query("UPDATE files SET status = 'deleted' WHERE id = $1 AND owner_id = $2", [req.params.id, user.id]);
+    await client.query("UPDATE share_links SET is_active = false WHERE file_id = $1", [req.params.id]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("File deletion failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not delete this file." });
+  } finally {
+    client.release();
+  }
+
+  let storageCleanup = "not_configured";
+  if (env.CLOUDINARY_URL && storageKey) {
+    try {
+      cloudinary.config({ cloudinary_url: env.CLOUDINARY_URL });
+      const resourceType = mimeType.startsWith("video/") ? "video" : mimeType.startsWith("image/") ? "image" : "raw";
+      const result = await cloudinary.uploader.destroy(storageKey, { resource_type: resourceType, invalidate: true });
+      storageCleanup = result?.result || "unknown";
+    } catch (error) {
+      storageCleanup = "failed";
+      console.error("Cloudinary cleanup failed for deleted file:", error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+  return res.json({ ok: true, storageCleanup });
 });
 
 app.get("/api/share/:slug", async (req, res) => {
