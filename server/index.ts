@@ -149,15 +149,15 @@ app.get("/api/files", requireAuth, async (req, res) => {
 
 app.patch("/api/files/:id", requireAuth, async (req, res) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-  if (!name || name.length > 180 || /[\\/\\\\\\u0000-\\u001f\\u007f]/.test(name)) {
+  if (!name || name.length > 180 || name.includes("/") || name.includes("\\") || /[\u0000-\u001f\u007f]/.test(name)) {
     return res.status(400).json({ error: "Enter a valid file name (up to 180 characters)." });
   }
   try {
     const user = (req as any).user;
     const existing = await pool.query("SELECT id, original_name, extension FROM files WHERE id = $1 AND owner_id = $2 AND status = 'ready' LIMIT 1", [req.params.id, user.id]);
     if (!existing.rows[0]) return res.status(404).json({ error: "File not found." });
-    const previousExtension = String(existing.rows[0].extension || path.extname(existing.rows[0].original_name).replace(/^\\./, "") || "").toLowerCase();
-    const requestedExtension = path.extname(name).replace(/^\\./, "").toLowerCase();
+    const previousExtension = String(existing.rows[0].extension || path.extname(existing.rows[0].original_name).slice(1) || "").toLowerCase();
+    const requestedExtension = path.extname(name).slice(1).toLowerCase();
     if (previousExtension !== requestedExtension) return res.status(400).json({ error: "Keep the original file extension when renaming." });
     const updated = await pool.query("UPDATE files SET original_name = $1 WHERE id = $2 AND owner_id = $3 AND status = 'ready' RETURNING id, original_name", [name, req.params.id, user.id]);
     return res.json({ ok: true, file: { id: updated.rows[0].id, name: updated.rows[0].original_name } });
