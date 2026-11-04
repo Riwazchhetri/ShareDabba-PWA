@@ -25,3 +25,5 @@
 .google-login iframe{max-width:100%}
 .auth-divider{display:flex;align-items:center;gap:12px;color:#aaa7b7;font-size:9px;font-weight:800;letter-spacing:.09em;margin:12px 0 18px}
 .auth-divider:before,.auth-divider:after{content:"";height:1px;background:#eeecf3;flex:1}
+
+.google-login-button{width:100%;height:46px;border:1px solid #dedce8;border-radius:10px;background:#fff;color:#29263d;font:600 14px 'DM Sans',sans-serif;cursor:pointer;margin:8px 0 14px}.google-login-button:hover{background:#f8f7fc;border-color:#bcb5e8}.google-login-button:disabled{opacity:.6;cursor:wait}
