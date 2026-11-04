@@ -23,7 +23,11 @@ export default function App() {
   const [authName,setAuthName] = useState("");
   const [authEmail,setAuthEmail] = useState("");
   const [authPassword,setAuthPassword] = useState("");
-  const [authBusy,setAuthBusy] = useState(false);\n  const [share,setShare] = useState<any>(null);\n  const [shareError,setShareError] = useState("");\n  const shareSlug = window.location.pathname.match(/^\\/s\\/([a-zA-Z0-9]+)/)?.[1];\n  useEffect(() => { if (!shareSlug) return; fetch(`/api/share/${shareSlug}`).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Link unavailable");setShare(d.file);}).catch(e=>setShareError(e.message||"Link unavailable")); }, [shareSlug]);
+  const [authBusy,setAuthBusy] = useState(false);
+  const [share,setShare] = useState<any>(null);
+  const [shareError,setShareError] = useState("");
+  const shareSlug = window.location.pathname.match(/^\/s\/([a-zA-Z0-9]+)/)?.[1];
+  useEffect(() => { if (!shareSlug) return; fetch(`/api/share/${shareSlug}`).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Link unavailable");setShare(d.file);}).catch(e=>setShareError(e.message||"Link unavailable")); }, [shareSlug]);
   useEffect(() => { fetch("/api/auth/me").then(r=>r.ok?r.json():null).then(d=>setUser(d?.user||null)).catch(()=>setUser(null)).finally(()=>setAuthChecking(false)); }, []);
   const submitAuth = async (e:React.FormEvent) => {
     e.preventDefault(); setAuthBusy(true); setNotice("");
@@ -68,7 +72,8 @@ export default function App() {
     } finally { setUploadBusy(false); }
   };
   const total = items.reduce((a,b)=>a+b.size,0);
-  if (shareSlug) return <div className="authscreen"><div className="authcard sharecard"><div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span></div>{share?<><div className="filebig"><Play/></div><h1>{share.name}</h1><p>Shared by {share.creator} · {fmt(share.size)}</p><div className="sharecta">To watch this video, open it in the ShareDabba Player app.</div><a className="primary full appopen" href={`sharedabba://play/${shareSlug}`}>Open in ShareDabba Player</a><small className="muted">The website does not play or expose the original video file.</small></>:<p>{shareError||"Loading shared file…"}</p>}</div></div>;\n  if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
+  if (shareSlug) return <div className="authscreen"><div className="authcard sharecard"><div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span></div>{share?<><div className="filebig"><Play/></div><h1>{share.name}</h1><p>Shared by {share.creator} · {fmt(share.size)}</p><div className="sharecta">To watch this video, open it in the ShareDabba Player app.</div><a className="primary full appopen" href={`sharedabba://play/${shareSlug}`}>Open in ShareDabba Player</a><small className="muted">The website does not play or expose the original video file.</small></>:<p>{shareError||"Loading shared file…"}</p>}</div></div>;
+  if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
   if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p>{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
   return <div className="shell">
     <aside className={`sidebar ${mobile?"show":""}`}>
