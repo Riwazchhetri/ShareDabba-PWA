@@ -3,12 +3,12 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "node:path";
 import multer from "multer";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, randomUUID } from "node:crypto";
 import { env } from "./config.js";
 import { checkDatabase, pool } from "./db.js";
 import { v2 as cloudinary } from "cloudinary";
 
-const app = express();
+const app = express();\nconst UPLOAD_OWNER_ID = "a47e8c0a-a4d1-41eb-bba7-d7b4ed06e26b";
 const webDirectory = path.resolve(process.cwd(), "dist/web");
 const webIndex = path.join(webDirectory, "index.html");
 
@@ -67,22 +67,54 @@ app.post("/api/files/upload", (req, res, next) => {
       }, (error, result) => error ? reject(error) : resolve(result));
       stream.end(req.file!.buffer);
     });
+    const slug = randomUUID().replace(/-/g, "").slice(0, 12);
+    const saved = await pool.query(
+      "INSERT INTO files (owner_id, original_name, mime_type, extension, size_bytes, storage_key, status) VALUES ($1, $2, $3, $4, $5, $6, 'ready') RETURNING id, created_at",
+      [UPLOAD_OWNER_ID, req.file.originalname, req.file.mimetype, path.extname(req.file.originalname).replace(/^\\./, "") || null, uploaded.bytes, uploaded.public_id]
+    );
+    const fileId = saved.rows[0].id as string;
+    await pool.query("INSERT INTO share_links (file_id, slug) VALUES ($1, $2)", [fileId, slug]);
     return res.status(201).json({
       ok: true,
       file: {
+        id: fileId,
         name: req.file.originalname,
         size: req.file.size,
         mimeType: req.file.mimetype,
         resourceType: uploaded.resource_type,
         publicId: uploaded.public_id,
         url: uploaded.secure_url,
+        shareUrl: uploaded.secure_url,
+        slug,
         bytes: uploaded.bytes,
-        format: uploaded.format
+        format: uploaded.format,
+        createdAt: saved.rows[0].created_at
       }
     });
   } catch (error) {
     console.error("Cloudinary upload failed:", error instanceof Error ? error.message : "Unknown error");
     return res.status(502).json({ error: "Cloud upload failed. Please try again." });
+  }
+});
+
+app.get("/api/files", async (req, res) => {
+  if (!hasValidUploadKey(req.header("x-upload-key"))) {
+    return res.status(401).json({ error: "Upload access key is missing or invalid." });
+  }
+  try {
+    const result = await pool.query(
+      "SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.storage_key, f.created_at, sl.slug FROM files f LEFT JOIN share_links sl ON sl.file_id = f.id AND sl.is_active = true WHERE f.owner_id = $1 AND f.status = 'ready' ORDER BY f.created_at DESC LIMIT 200",
+      [UPLOAD_OWNER_ID]
+    );
+    const files = result.rows.map(row => {
+      const extension = path.extname(row.original_name).toLowerCase();
+      const type = row.mime_type?.startsWith("video/") ? "Video" : row.mime_type?.startsWith("image/") ? "Image" : row.mime_type?.includes("pdf") ? "Document" : [".zip", ".apk", ".rar", ".7z"].includes(extension) ? "Archive" : "File";
+      return { id: row.id, name: row.original_name, type, size: Number(row.size_bytes), date: row.created_at, views: 0, slug: row.slug, url: null, storageKey: row.storage_key };
+    });
+    return res.json({ ok: true, files });
+  } catch (error) {
+    console.error("File list failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not load saved files." });
   }
 });
 
