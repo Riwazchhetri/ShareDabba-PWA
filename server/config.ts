@@ -6,6 +6,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().url().optional(),
   DATABASE_SSL: z.enum(["true", "false"]).default("false"),
+  CLOUDINARY_URL: z.string().optional(),
   WEB_ORIGIN: z.string().default("http://localhost:5173")
 });
 
