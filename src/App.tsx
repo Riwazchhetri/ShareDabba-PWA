@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, getRedirectResult, signInWithRedirect } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, getRedirectResult, signInWithRedirect, setPersistence, browserLocalPersistence, onAuthStateChanged } from "firebase/auth";
 
 const firebaseApp = initializeApp({ apiKey: "AIzaSyDmXaqI47Ps0XEdm6LcNG9YVJ6F_1OxZ8U", authDomain: "sharedabba-login.firebaseapp.com", projectId: "sharedabba-login", storageBucket: "sharedabba-login.firebasestorage.app", messagingSenderId: "79368523457", appId: "1:79368523457:web:6b1ba06ae4776964674e40" });
 const firebaseAuth = getAuth(firebaseApp);
@@ -17,7 +17,7 @@ export default function App() {
   const [tab,setTab] = useState("Dashboard");
   const [items,setItems] = useState(initial);
   const [query,setQuery] = useState("");
-  const [notice,setNotice] = useState("Cloud uploads are enabled. Upload files to your creator account.");
+  const [notice,setNotice] = useState("");
   const [mobile,setMobile] = useState(false);
   const [selected,setSelected] = useState<FileItem|null>(null);
   const [copied,setCopied] = useState(false);
@@ -53,20 +53,31 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    getRedirectResult(firebaseAuth).then(async (credential) => {
-      if (credential && active) {
-        setAuthBusy(true);
-        await finishFirebaseSignIn(credential.user);
-      }
+    let handled = false;
+    const complete = async (firebaseUser: import("firebase/auth").User) => {
+      if (!active || handled) return;
+      handled = true;
+      setAuthBusy(true);
+      try { await finishFirebaseSignIn(firebaseUser); }
+      catch (error) { setNotice(error instanceof Error ? error.message : "Google sign-in could not be completed. Please try again."); }
+      finally { if (active) setAuthBusy(false); }
+    };
+    getRedirectResult(firebaseAuth).then((credential) => {
+      if (credential) return complete(credential.user);
+      if (firebaseAuth.currentUser) return complete(firebaseAuth.currentUser);
     }).catch((error) => {
-      if (active) setNotice(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
-    }).finally(() => { if (active) setAuthBusy(false); });
-    return () => { active = false; };
+      if (active) setNotice(error instanceof Error ? error.message : "Google sign-in failed. Check Firebase authorized domains and try again.");
+    });
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+      if (firebaseUser) void complete(firebaseUser);
+    });
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   const signInWithGoogle = async () => {
     setAuthBusy(true); setNotice("Redirecting to Google securely…");
     try {
+      await setPersistence(firebaseAuth, browserLocalPersistence);
       await signInWithRedirect(firebaseAuth, googleProvider);
     } catch (error) {
       setAuthBusy(false);
@@ -165,7 +176,7 @@ export default function App() {
   const total = items.reduce((a,b)=>a+b.size,0);
   if (shareSlug) return <div className="authscreen"><div className="authcard sharecard"><div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span></div>{share?<><div className="filebig"><Play/></div><h1>{share.name}</h1><p>Shared by {share.creator} · {fmt(share.size)}</p><div className="sharecta">To watch this video, open it in the ShareDabba Player app.</div><a className="primary full appopen" href={`sharedabba://play/${shareSlug}`}>Open in ShareDabba Player</a><small className="muted">The website does not play or expose the original video file.</small></>:<p>{shareError||"Loading shared file…"}</p>}</div></div>;
   if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
-  if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p><><button type="button" className="google-login-button" onClick={signInWithGoogle} disabled={authBusy}>Continue with Google</button><div className="auth-divider"><span>OR CONTINUE WITH EMAIL</span></div></>{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
+  if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p><><button type="button" className="google-login-button" onClick={signInWithGoogle} disabled={authBusy}><svg className="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3Z"/><path fill="#EA4335" d="M24 11.9c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 5.9 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3C14.2 15.5 18.7 11.9 24 11.9Z"/></svg><span>Continue with Google</span></button><div className="auth-divider"><span>OR CONTINUE WITH EMAIL</span></div></>{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
   return <div className="shell">
     <aside className={`sidebar ${mobile?"show":""}`}>
       <div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span><button className="close" onClick={()=>setMobile(false)}>×</button></div>
