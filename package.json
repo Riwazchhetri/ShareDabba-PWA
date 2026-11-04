@@ -32,6 +32,8 @@
     "@types/pg": "^8.15.5",
     "concurrently": "^9.2.1",
     "tsx": "^4.20.5",
-    "cloudinary": "^2.7.0"
+    "cloudinary": "^2.7.0",
+    "multer": "^2.0.2",
+    "@types/multer": "^2.0.0"
   }
 }
