@@ -98,6 +98,42 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(500).json({ error: "Could not sign in. Please try again." });
   }
 });
+
+app.post("/api/auth/google", async (req, res) => {
+  if (!env.GOOGLE_CLIENT_ID) return res.status(503).json({ error: "Google sign-in is not configured yet." });
+  const credential = typeof req.body?.credential === "string" ? req.body.credential : "";
+  if (!credential || credential.length > 12000) return res.status(400).json({ error: "Google credential is missing or invalid." });
+  try {
+    const verifyResponse = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(credential));
+    if (!verifyResponse.ok) return res.status(401).json({ error: "Google sign-in could not be verified. Please try again." });
+    const claims = await verifyResponse.json() as Record<string, unknown>;
+    const issuer = claims.iss;
+    const expiresAt = Number(claims.exp);
+    const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : "";
+    const subject = typeof claims.sub === "string" ? claims.sub : "";
+    const verifiedEmail = claims.email_verified === true || claims.email_verified === "true";
+    if (claims.aud !== env.GOOGLE_CLIENT_ID || (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") || !Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000) || !verifiedEmail || !subject || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      return res.status(401).json({ error: "Google account verification failed." });
+    }
+    const displayName = (typeof claims.name === "string" && claims.name.trim()) || (typeof claims.given_name === "string" && claims.given_name.trim()) || email.split("@")[0];
+    let result = await pool.query(
+      "INSERT INTO users (email, password_hash, display_name, role, status) VALUES ($1, $2, $3, 'creator', 'active') ON CONFLICT (email) DO NOTHING RETURNING id, email, display_name, role, status",
+      [email, hashPassword(randomBytes(32).toString("base64url")), displayName.slice(0, 60)]
+    );
+    let user = result.rows[0];
+    if (!user) {
+      result = await pool.query("SELECT id, email, display_name, role, status FROM users WHERE email = $1 LIMIT 1", [email]);
+      user = result.rows[0];
+    }
+    if (!user || user.status !== "active") return res.status(403).json({ error: "This ShareDabba account is unavailable. Contact support." });
+    res.setHeader("Set-Cookie", sessionCookie(makeToken(user.id)));
+    return res.json({ ok: true, user: { id: user.id, email: user.email, display_name: user.display_name, role: user.role } });
+  } catch (error) {
+    console.error("Google sign-in failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Google sign-in failed. Please try again." });
+  }
+});
+
 app.post("/api/auth/logout", (_req, res) => { res.setHeader("Set-Cookie", sessionCookie("", 0)); res.json({ ok: true }); });
 app.get("/api/auth/me", requireAuth, (req, res) => res.json({ ok: true, user: (req as any).user }));
 
