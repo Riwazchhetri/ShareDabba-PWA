@@ -15,7 +15,7 @@ Included:
 
 Not yet included:
 - User authentication or server-side roles
-- Persistent cloud uploads or downloads
+- Authenticated persistent cloud uploads or downloads
 - Database-backed file records
 - Real share links, streaming or download delivery
 - Ad-provider callbacks, verified earnings or payouts
@@ -38,6 +38,10 @@ Create a production build:
 npm run build
 npm run preview
 ```
+
+## Cloudinary connection
+
+Set `CLOUDINARY_URL` as a private environment variable on the backend service in Render. Use the Cloudinary connection URL shown in your Cloudinary dashboard; never commit it to GitHub or place it in frontend code. The backend exposes `GET /api/storage/status` to verify the connection. This status check does not enable public uploads; upload endpoints must be added behind user authentication and authorization.
 
 ## Planned architecture
 
