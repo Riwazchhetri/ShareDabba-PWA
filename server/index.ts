@@ -262,6 +262,71 @@ app.delete("/api/files/:id", requireAuth, async (req, res) => {
   return res.json({ ok: true, storageCleanup });
 });
 
+
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = (req as any).user;
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Administrator access is required." });
+  next();
+}
+
+app.get("/api/share-page-ads", async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT slot, image_url AS \"imageUrl\", target_url AS \"targetUrl\", is_active AS active FROM share_page_ads ORDER BY slot");
+    return res.json({ ok: true, ads: result.rows });
+  } catch (error) {
+    console.error("Share page ads lookup failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not load advertisements." });
+  }
+});
+
+app.get("/api/admin/share-page-ads", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT slot, image_url AS \"imageUrl\", target_url AS \"targetUrl\", is_active AS active FROM share_page_ads ORDER BY slot");
+    return res.json({ ok: true, ads: result.rows });
+  } catch (error) {
+    console.error("Admin ad settings lookup failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not load ad settings." });
+  }
+});
+
+const adUploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => {
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) return cb(new Error("Upload a JPG, PNG, WEBP or GIF banner image."));
+  cb(null, true);
+}});
+app.post("/api/admin/share-page-ads/upload", requireAuth, requireAdmin, adUploadMiddleware.single("file"), async (req, res) => {
+  if (!env.CLOUDINARY_URL) return res.status(503).json({ error: "Cloud image storage is not configured." });
+  if (!req.file) return res.status(400).json({ error: "Choose a banner image first." });
+  try {
+    cloudinary.config({ cloudinary_url: env.CLOUDINARY_URL });
+    const uploaded = await new Promise<any>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream({ folder: "sharedabba/ad-banners", resource_type: "image", use_filename: true, unique_filename: true, overwrite: false }, (error, result) => error ? reject(error) : resolve(result));
+      stream.end(req.file!.buffer);
+    });
+    return res.status(201).json({ ok: true, imageUrl: uploaded.secure_url });
+  } catch (error) {
+    console.error("Ad banner upload failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(502).json({ error: "Banner upload failed. Please try again." });
+  }
+});
+app.put("/api/admin/share-page-ads/:slot", requireAuth, requireAdmin, async (req, res) => {
+  const slot = Number(req.params.slot);
+  const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+  const targetUrl = typeof req.body?.targetUrl === "string" ? req.body.targetUrl.trim() : "";
+  const active = req.body?.active === true;
+  if (![1, 2].includes(slot)) return res.status(400).json({ error: "Ad slot must be 1 or 2." });
+  if (!/^https:\/\//i.test(imageUrl) || imageUrl.length > 2048) return res.status(400).json({ error: "Upload a valid banner image first." });
+  try { new URL(targetUrl); } catch { return res.status(400).json({ error: "Enter a valid banner destination URL." }); }
+  if (!/^https?:\/\//i.test(targetUrl) || targetUrl.length > 2048) return res.status(400).json({ error: "Banner destination must be an HTTP or HTTPS URL." });
+  try {
+    const user = (req as any).user;
+    const result = await pool.query("INSERT INTO share_page_ads (slot, image_url, target_url, is_active, updated_by, updated_at) VALUES ($1, $2, $3, $4, $5, NOW()) ON CONFLICT (slot) DO UPDATE SET image_url = EXCLUDED.image_url, target_url = EXCLUDED.target_url, is_active = EXCLUDED.is_active, updated_by = EXCLUDED.updated_by, updated_at = NOW() RETURNING slot, image_url AS \"imageUrl\", target_url AS \"targetUrl\", is_active AS active", [slot, imageUrl, targetUrl, active, user.id]);
+    return res.json({ ok: true, ad: result.rows[0] });
+  } catch (error) {
+    console.error("Ad settings save failed:", error instanceof Error ? error.message : "Unknown error");
+    return res.status(500).json({ error: "Could not save ad settings." });
+  }
+});
+
 app.get("/api/share/:slug", async (req, res) => {
   try {
     const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, u.display_name FROM share_links sl JOIN files f ON f.id = sl.file_id JOIN users u ON u.id = f.owner_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1", [req.params.slug]);
