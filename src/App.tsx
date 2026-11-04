@@ -47,7 +47,7 @@ export default function App() {
   useEffect(() => { if (!shareSlug) return; fetch(`/api/share/${shareSlug}`).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Link unavailable");setShare(d.file);}).catch(e=>setShareError(e.message||"Link unavailable")); }, [shareSlug]);
   useEffect(() => { fetch("/api/auth/me").then(r=>r.ok?r.json():null).then(d=>setUser(d?.user||null)).catch(()=>setUser(null)).finally(()=>setAuthChecking(false)); }, []);
   useEffect(() => {
-    if (user || !googleClientId || !googleButtonRef.current) return;
+    if (authChecking || user || !googleClientId || !googleButtonRef.current) return;
     let cancelled = false;
     const renderGoogleButton = () => {
       if (cancelled || !googleButtonRef.current || !window.google?.accounts?.id) return;
@@ -86,7 +86,7 @@ export default function App() {
       document.head.appendChild(next);
     }
     return () => { cancelled = true; };
-  }, [user, googleClientId]);
+  }, [user, googleClientId, authChecking]);
 
   const submitAuth = async (e:React.FormEvent) => {
     e.preventDefault(); setAuthBusy(true); setNotice("");
