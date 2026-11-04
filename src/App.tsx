@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, getRedirectResult, signInWithRedirect } from "firebase/auth";
 
 const firebaseApp = initializeApp({ apiKey: "AIzaSyDmXaqI47Ps0XEdm6LcNG9YVJ6F_1OxZ8U", authDomain: "sharedabba-login.firebaseapp.com", projectId: "sharedabba-login", storageBucket: "sharedabba-login.firebasestorage.app", messagingSenderId: "79368523457", appId: "1:79368523457:web:6b1ba06ae4776964674e40" });
 const firebaseAuth = getAuth(firebaseApp);
@@ -43,17 +43,35 @@ export default function App() {
     try { const response=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:authName,email:authEmail,password:authPassword})}); const data=await response.json(); if(!response.ok) throw new Error(data.error||"Authentication failed"); setUser(data.user); setItems([]); setNotice(authMode==="register"?"Your creator account is ready.":"Welcome back."); }
     catch(error){setNotice(error instanceof Error?error.message:"Could not sign in.");} finally{setAuthBusy(false);}
   };
+  const finishFirebaseSignIn = async (firebaseUser: import("firebase/auth").User) => {
+    const idToken = await firebaseUser.getIdToken();
+    const response = await fetch("/api/auth/firebase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Google sign-in failed.");
+    setUser(data.user); setItems([]); setNotice("You're signed in with Google.");
+  };
+
+  useEffect(() => {
+    let active = true;
+    getRedirectResult(firebaseAuth).then(async (credential) => {
+      if (credential && active) {
+        setAuthBusy(true);
+        await finishFirebaseSignIn(credential.user);
+      }
+    }).catch((error) => {
+      if (active) setNotice(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
+    }).finally(() => { if (active) setAuthBusy(false); });
+    return () => { active = false; };
+  }, []);
+
   const signInWithGoogle = async () => {
-    setAuthBusy(true); setNotice("");
+    setAuthBusy(true); setNotice("Redirecting to Google securely…");
     try {
-      const credential = await signInWithPopup(firebaseAuth, googleProvider);
-      const idToken = await credential.user.getIdToken();
-      const response = await fetch("/api/auth/firebase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Google sign-in failed.");
-      setUser(data.user); setItems([]); setNotice("You're signed in with Google.");
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Google sign-in failed. Please try again."); }
-    finally { setAuthBusy(false); }
+      await signInWithRedirect(firebaseAuth, googleProvider);
+    } catch (error) {
+      setAuthBusy(false);
+      setNotice(error instanceof Error ? error.message : "Could not start Google sign-in. Please check your browser settings.");
+    }
   };
 
   const signOut = async () => { await fetch("/api/auth/logout",{method:"POST"}); setUser(null); setItems([]);  setTab("Dashboard"); };
