@@ -134,11 +134,11 @@ app.post("/api/files/upload", requireAuth, uploadMiddleware.single("file"), asyn
 app.get("/api/files", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
-    const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, sl.slug, sl.is_active AS share_active FROM files f LEFT JOIN share_links sl ON sl.file_id = f.id WHERE f.owner_id = $1 AND f.status = 'ready' ORDER BY f.created_at DESC LIMIT 200", [user.id]);
+    const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, sl.slug, sl.is_active AS share_active, COALESCE(ev.views, 0)::int AS views FROM files f LEFT JOIN share_links sl ON sl.file_id = f.id LEFT JOIN (SELECT file_id, COUNT(*) AS views FROM file_events WHERE event_type = 'view' GROUP BY file_id) ev ON ev.file_id = f.id WHERE f.owner_id = $1 AND f.status = 'ready' ORDER BY f.created_at DESC LIMIT 200", [user.id]);
     const files = result.rows.map(row => {
       const extension = path.extname(row.original_name).toLowerCase();
       const type = row.mime_type?.startsWith("video/") ? "Video" : row.mime_type?.startsWith("image/") ? "Image" : row.mime_type?.includes("pdf") ? "Document" : [".zip", ".apk", ".rar", ".7z"].includes(extension) ? "Archive" : "File";
-      return { id: row.id, name: row.original_name, type, size: Number(row.size_bytes), date: row.created_at, views: 0, slug: row.slug, shareActive: row.share_active !== false };
+      return { id: row.id, name: row.original_name, type, size: Number(row.size_bytes), date: row.created_at, views: Number(row.views || 0), slug: row.slug, shareActive: row.share_active !== false };
     });
     return res.json({ ok: true, files });
   } catch (error) {
@@ -228,9 +228,10 @@ app.delete("/api/files/:id", requireAuth, async (req, res) => {
 
 app.get("/api/share/:slug", async (req, res) => {
   try {
-    const result = await pool.query("SELECT f.original_name, f.mime_type, f.size_bytes, f.created_at, u.display_name FROM share_links sl JOIN files f ON f.id = sl.file_id JOIN users u ON u.id = f.owner_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1", [req.params.slug]);
+    const result = await pool.query("SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.created_at, u.display_name FROM share_links sl JOIN files f ON f.id = sl.file_id JOIN users u ON u.id = f.owner_id WHERE sl.slug = $1 AND sl.is_active = true AND f.status = 'ready' AND (sl.expires_at IS NULL OR sl.expires_at > NOW()) LIMIT 1", [req.params.slug]);
     if (!result.rows[0]) return res.status(404).json({ error: "This share link is unavailable." });
     const file = result.rows[0];
+    await pool.query("INSERT INTO file_events (file_id, event_type) VALUES ($1, 'view')", [file.id]);
     return res.json({ ok: true, file: { name: file.original_name, mimeType: file.mime_type, size: Number(file.size_bytes), createdAt: file.created_at, creator: file.display_name } });
   } catch (error) {
     console.error("Share lookup failed:", error instanceof Error ? error.message : "Unknown error");
