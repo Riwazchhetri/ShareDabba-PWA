@@ -8,7 +8,7 @@ const envSchema = z.object({
   DATABASE_SSL: z.enum(["true", "false"]).default("false"),
   CLOUDINARY_URL: z.string().optional(),
   AUTH_SECRET: z.string().min(32),
-  GOOGLE_CLIENT_ID: z.string().optional(),
+  FIREBASE_API_KEY: z.string().optional(),
   WEB_ORIGIN: z.string().default("http://localhost:5173")
 });
 
