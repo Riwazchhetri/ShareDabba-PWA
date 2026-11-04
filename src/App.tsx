@@ -2,11 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LayoutDashboard, Files, UploadCloud, Wallet, Users, Settings, ShieldCheck, Search, Bell, Menu, Plus, HardDrive, Eye, TrendingUp, Check, Play, FileText, Archive, Image as ImageIcon, MoreHorizontal, Copy } from "lucide-react";
 
 type FileItem = { id: string; name: string; type: string; size: number; date: string; views: number; slug: string; url?: string };
-const initial: FileItem[] = [
-  { id:"1", name:"Sample travel video.mp4", type:"Video", size:84000000, date:"Today", views:1240, slug:"travel-video" },
-  { id:"2", name:"Creator starter pack.zip", type:"Archive", size:12000000, date:"Yesterday", views:386, slug:"starter-pack" },
-  { id:"3", name:"Product guide.pdf", type:"Document", size:2400000, date:"2 days ago", views:92, slug:"product-guide" }
-];
+const initial: FileItem[] = [];
 const fmt = (n:number) => n < 1e6 ? `${(n/1e3).toFixed(0)} KB` : `${(n/1e6).toFixed(1)} MB`;
 const nav = [{name:"Dashboard",icon:LayoutDashboard},{name:"My Files",icon:Files},{name:"Upload",icon:UploadCloud},{name:"Withdrawals",icon:Wallet},{name:"Referrals",icon:Users},{name:"Settings",icon:Settings},{name:"Admin panel",icon:ShieldCheck}];
 
@@ -19,7 +15,8 @@ export default function App() {
   const [selected,setSelected] = useState<FileItem|null>(null);
   const [copied,setCopied] = useState(false);
   const [uploadKey,setUploadKey] = useState("");
-  const [uploadBusy,setUploadBusy] = useState(false);\n  const [filesLoading,setFilesLoading] = useState(false);
+  const [uploadBusy,setUploadBusy] = useState(false);
+  const [filesLoading,setFilesLoading] = useState(false);
   useEffect(() => {
     if (!uploadKey.trim()) return;
     let active = true;
