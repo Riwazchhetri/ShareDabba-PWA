@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LayoutDashboard, Files, UploadCloud, Wallet, Users, Settings, ShieldCheck, Search, Bell, Menu, Plus, HardDrive, Eye, TrendingUp, Check, Play, FileText, Archive, Image as ImageIcon, MoreHorizontal, Copy } from "lucide-react";
 
 type FileItem = { id: string; name: string; type: string; size: number; date: string; views: number; slug: string; url?: string };
@@ -19,7 +19,21 @@ export default function App() {
   const [selected,setSelected] = useState<FileItem|null>(null);
   const [copied,setCopied] = useState(false);
   const [uploadKey,setUploadKey] = useState("");
-  const [uploadBusy,setUploadBusy] = useState(false);
+  const [uploadBusy,setUploadBusy] = useState(false);\n  const [filesLoading,setFilesLoading] = useState(false);
+  useEffect(() => {
+    if (!uploadKey.trim()) return;
+    let active = true;
+    setFilesLoading(true);
+    fetch("/api/files", { headers: { "x-upload-key": uploadKey.trim() } })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load files");
+        if (active) setItems(data.files);
+      })
+      .catch(error => { if (active) setNotice(error instanceof Error ? error.message : "Could not load saved files."); })
+      .finally(() => { if (active) setFilesLoading(false); });
+    return () => { active = false; };
+  }, [uploadKey]);
   const filtered = useMemo(()=>items.filter(x=>x.name.toLowerCase().includes(query.toLowerCase())),[items,query]);
   const upload = async (list:FileList|null) => {
     if(!list?.length) return;
@@ -34,10 +48,10 @@ export default function App() {
         const result = await response.json();
         if(!response.ok) throw new Error(result.error || "Upload failed");
         const remote = result.file;
-        added.push({id:crypto.randomUUID(),name:remote.name,type:remote.resourceType==="video"?"Video":remote.resourceType==="image"?"Image":remote.mimeType.includes("pdf")?"Document":remote.name.toLowerCase().endsWith(".zip")?"Archive":"File",size:remote.bytes,date:"Just now",views:0,slug:remote.publicId,url:remote.url});
+        added.push({id:crypto.randomUUID(),name:remote.name,type:remote.resourceType==="video"?"Video":remote.resourceType==="image"?"Image":remote.mimeType.includes("pdf")?"Document":remote.name.toLowerCase().endsWith(".zip")?"Archive":"File",size:remote.bytes,date:"Just now",views:0,slug:remote.slug,url:remote.shareUrl});
       }
       setItems(v=>[...added,...v]); setTab("My Files");
-      setNotice(`${added.length} file(s) uploaded successfully to Cloudinary. Their cloud URLs are ready.`);
+      setNotice(`${added.length} file(s) uploaded to Cloudinary and saved in your ShareDabba database.`);
     } catch(error) {
       setNotice(error instanceof Error ? error.message : "Upload failed. Please try again.");
     } finally { setUploadBusy(false); }
@@ -67,7 +81,7 @@ export default function App() {
           <section className="panel"><div className="panelhead"><div><h3>Monetization overview</h3><p>Illustrative layout — not actual earnings</p></div><span className="demo-pill">DEMO DATA</span></div><div className="emptychart"><TrendingUp size={26}/><b>Connect advertising to see verified revenue</b><span>Views, ad impressions and payable earnings will be tracked separately.</span></div></section>
         </>}
         {tab==="My Files" && <section className="panel"><div className="panelhead"><div><h3>All files</h3><p>Manage your uploaded content</p></div><div className="search"><Search size={16}/><input placeholder="Search files..." value={query} onChange={e=>setQuery(e.target.value)}/></div></div><FileRows items={filtered} onSelect={setSelected}/></section>}
-        {tab==="Upload" && <section className="panel uploadpanel"><div className="drop"><UploadCloud size={38}/><h2>Upload your files</h2><p>Choose videos, APKs, PDFs, ZIPs, images and other files.</p><label className="uploadbtn"><Plus size={17}/> Choose files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label><label className="keyfield">Private upload access key<input type="password" value={uploadKey} onChange={e=>setUploadKey(e.target.value)} placeholder="Paste your private upload key" autoComplete="off"/></label><small>Files are uploaded to Cloudinary. Maximum file size: 100 MB per file. Keep your access key private.</small>{uploadBusy&&<small>Uploading to cloud… please keep this page open.</small>}</div></section>}
+        {tab==="Upload" && <section className="panel uploadpanel"><div className="drop"><UploadCloud size={38}/><h2>Upload your files</h2><p>Choose videos, APKs, PDFs, ZIPs, images and other files.</p><label className="uploadbtn"><Plus size={17}/> Choose files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label><label className="keyfield">Private upload access key<input type="password" value={uploadKey} onChange={e=>setUploadKey(e.target.value)} placeholder="Paste your private upload key" autoComplete="off"/></label><small>Files are uploaded to Cloudinary and saved in your database. Maximum file size: 100 MB per file. Keep your access key private.</small>{filesLoading&&<small>Loading your saved files…</small>}{uploadBusy&&<small>Uploading to cloud… please keep this page open.</small>}</div></section>}
         {tab==="Withdrawals" && <Placeholder icon={<Wallet/>} title="Creator withdrawals" desc="Withdrawal requests will become available after verified advertising revenue, creator balances and payment-provider integration are configured."/>}
         {tab==="Referrals" && <Placeholder icon={<Users/>} title="Referral tracking" desc="Referral links, attribution and eligible commission rules will be added after account authentication is connected."/>}
         {tab==="Settings" && <Placeholder icon={<Settings/>} title="Workspace settings" desc="Profile, security, storage provider and monetization preferences will be configured in the connected production backend."/>}
@@ -75,7 +89,7 @@ export default function App() {
         <footer>© 2026 ShareDabba · Prototype workspace <span>Built for file hosting, not a social video feed.</span></footer>
       </div>
     </main>
-    {selected && <div className="modalback" onClick={()=>setSelected(null)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="modalclose" onClick={()=>setSelected(null)}>×</button><div className="filebig">{selected.type==="Video"?<Play/>:selected.type==="Document"?<FileText/>:selected.type==="Image"?<ImageIcon/>:<Archive/>}</div><h2>{selected.name}</h2><p>{selected.type} · {fmt(selected.size)} · {selected.views.toLocaleString()} views</p><div className="sharebox">{selected.url || `sharedabba.example/s/${selected.slug}`}</div><button className="primary full" onClick={()=>{navigator.clipboard?.writeText(selected.url || `sharedabba.example/s/${selected.slug}`);setCopied(true)}}>{copied?<Check size={16}/>:<Copy size={16}/>} {copied?"Copied":"Copy share link"}</button><small className="muted">Demo link only. A real public URL is created after deployment.</small></div></div>}
+    {selected && <div className="modalback" onClick={()=>setSelected(null)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="modalclose" onClick={()=>setSelected(null)}>×</button><div className="filebig">{selected.type==="Video"?<Play/>:selected.type==="Document"?<FileText/>:selected.type==="Image"?<ImageIcon/>:<Archive/>}</div><h2>{selected.name}</h2><p>{selected.type} · {fmt(selected.size)} · {selected.views.toLocaleString()} views</p><div className="sharebox">{selected.url || `sharedabba.example/s/${selected.slug}`}</div><button className="primary full" onClick={()=>{navigator.clipboard?.writeText(selected.url || `sharedabba.example/s/${selected.slug}`);setCopied(true)}}>{copied?<Check size={16}/>:<Copy size={16}/>} {copied?"Copied":"Copy share link"}</button><small className="muted">Cloudinary delivery URL. Public share-page routing will be added next.</small></div></div>}
   </div>;
 }
 function Stat({icon,label,value,trend}:{icon:React.ReactNode,label:string,value:string,trend:string}){return <div className="stat"><div className="stat-top"><span>{label}</span><i>{icon}</i></div><strong>{value}</strong><small>{trend}</small></div>}
