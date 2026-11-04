@@ -381,7 +381,7 @@ app.get("/api/share/:slug/stream", async (req, res) => {
     if (!upstream.body) return res.end();
     const { Readable } = await import("node:stream");
     const body = Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream);
-    req.on("close", () => body.destroy());
+    res.on("close", () => { if (!res.writableEnded) body.destroy(); });
     body.on("error", (error) => {
       console.error("Video proxy stream failed:", error instanceof Error ? error.message : "Unknown error");
       if (!res.headersSent) res.status(502);
