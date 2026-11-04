@@ -63,7 +63,7 @@ app.post("/api/files/upload", (req, res, next) => {
         use_filename: true,
         unique_filename: true,
         overwrite: false,
-        ...(resourceType === "raw" ? { access_mode: "authenticated" } : {}),
+        
       }, (error, result) => error ? reject(error) : resolve(result));
       stream.end(req.file!.buffer);
     });
