@@ -1,18 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LayoutDashboard, Files, UploadCloud, Wallet, Users, Settings, ShieldCheck, Search, Bell, Menu, Plus, HardDrive, Eye, TrendingUp, Check, Play, FileText, Archive, Image as ImageIcon, MoreHorizontal, Copy } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (options: { client_id: string; callback: (response: { credential?: string }) => void }) => void;
-          renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
-        };
-      };
-    };
-  }
-}
+const firebaseApp = initializeApp({ apiKey: "AIzaSyDmXaqI47Ps0XEdm6LcNG9YVJ6F_1OxZ8U", authDomain: "sharedabba-login.firebaseapp.com", projectId: "sharedabba-login", storageBucket: "sharedabba-login.firebasestorage.app", messagingSenderId: "79368523457", appId: "1:79368523457:web:6b1ba06ae4776964674e40" });
+const firebaseAuth = getAuth(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
+import { LayoutDashboard, Files, UploadCloud, Wallet, Users, Settings, ShieldCheck, Search, Bell, Menu, Plus, HardDrive, Eye, TrendingUp, Check, Play, FileText, Archive, Image as ImageIcon, MoreHorizontal, Copy } from "lucide-react";
 
 type FileItem = { id: string; name: string; type: string; size: number; date: string; views: number; slug: string; url?: string; shareActive?: boolean };
 const initial: FileItem[] = [];
@@ -39,60 +33,29 @@ export default function App() {
   const [authEmail,setAuthEmail] = useState("");
   const [authPassword,setAuthPassword] = useState("");
   const [authBusy,setAuthBusy] = useState(false);
-  const googleButtonRef = useRef<HTMLDivElement|null>(null);
-  const googleClientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
   const [share,setShare] = useState<any>(null);
   const [shareError,setShareError] = useState("");
   const shareSlug = window.location.pathname.match(/^\/s\/([a-zA-Z0-9]+)/)?.[1];
   useEffect(() => { if (!shareSlug) return; fetch(`/api/share/${shareSlug}`).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Link unavailable");setShare(d.file);}).catch(e=>setShareError(e.message||"Link unavailable")); }, [shareSlug]);
   useEffect(() => { fetch("/api/auth/me").then(r=>r.ok?r.json():null).then(d=>setUser(d?.user||null)).catch(()=>setUser(null)).finally(()=>setAuthChecking(false)); }, []);
-  useEffect(() => {
-    if (authChecking || user || !googleClientId || !googleButtonRef.current) return;
-    let cancelled = false;
-    const renderGoogleButton = () => {
-      if (cancelled || !googleButtonRef.current || !window.google?.accounts?.id) return;
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: async (response) => {
-          if (!response.credential) { setNotice("Google did not return a sign-in credential."); return; }
-          setAuthBusy(true);
-          setNotice("");
-          try {
-            const result = await fetch("/api/auth/google", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ credential: response.credential }) });
-            const data = await result.json();
-            if (!result.ok) throw new Error(data.error || "Google sign-in failed.");
-            setUser(data.user);
-            setItems([]);
-            setNotice("You're signed in with Google.");
-          } catch (error) {
-            setNotice(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
-          } finally {
-            setAuthBusy(false);
-          }
-        }
-      });
-      window.google.accounts.id.renderButton(googleButtonRef.current, { type: "standard", theme: "outline", size: "large", text: "continue_with", shape: "rectangular", width: 320, logo_alignment: "left" });
-    };
-    const script = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
-    if (window.google?.accounts?.id) renderGoogleButton();
-    else if (script) script.addEventListener("load", renderGoogleButton, { once: true });
-    else {
-      const next = document.createElement("script");
-      next.src = "https://accounts.google.com/gsi/client";
-      next.async = true;
-      next.defer = true;
-      next.onload = renderGoogleButton;
-      next.onerror = () => setNotice("Google sign-in could not load. Check your connection.");
-      document.head.appendChild(next);
-    }
-    return () => { cancelled = true; };
-  }, [user, googleClientId, authChecking]);
-
   const submitAuth = async (e:React.FormEvent) => {
     e.preventDefault(); setAuthBusy(true); setNotice("");
     try { const response=await fetch("/api/auth/"+authMode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({displayName:authName,email:authEmail,password:authPassword})}); const data=await response.json(); if(!response.ok) throw new Error(data.error||"Authentication failed"); setUser(data.user); setItems([]); setNotice(authMode==="register"?"Your creator account is ready.":"Welcome back."); }
     catch(error){setNotice(error instanceof Error?error.message:"Could not sign in.");} finally{setAuthBusy(false);}
   };
+  const signInWithGoogle = async () => {
+    setAuthBusy(true); setNotice("");
+    try {
+      const credential = await signInWithPopup(firebaseAuth, googleProvider);
+      const idToken = await credential.user.getIdToken();
+      const response = await fetch("/api/auth/firebase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Google sign-in failed.");
+      setUser(data.user); setItems([]); setNotice("You're signed in with Google.");
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Google sign-in failed. Please try again."); }
+    finally { setAuthBusy(false); }
+  };
+
   const signOut = async () => { await fetch("/api/auth/logout",{method:"POST"}); setUser(null); setItems([]);  setTab("Dashboard"); };
   useEffect(() => {
     if (!user) return;
@@ -184,7 +147,7 @@ export default function App() {
   const total = items.reduce((a,b)=>a+b.size,0);
   if (shareSlug) return <div className="authscreen"><div className="authcard sharecard"><div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span></div>{share?<><div className="filebig"><Play/></div><h1>{share.name}</h1><p>Shared by {share.creator} · {fmt(share.size)}</p><div className="sharecta">To watch this video, open it in the ShareDabba Player app.</div><a className="primary full appopen" href={`sharedabba://play/${shareSlug}`}>Open in ShareDabba Player</a><small className="muted">The website does not play or expose the original video file.</small></>:<p>{shareError||"Loading shared file…"}</p>}</div></div>;
   if (authChecking) return <div className="authscreen"><div className="authcard">Loading your ShareDabba workspace…</div></div>;
-  if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p>{googleClientId&&<><div className="google-login" ref={googleButtonRef}/><div className="auth-divider"><span>OR CONTINUE WITH EMAIL</span></div></>}{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
+  if (!user) return <div className="authscreen"><form className="authcard" onSubmit={submitAuth}><div className="brandmark">S</div><h1>{authMode==="register"?"Create your creator account":"Welcome back"}</h1><p>Sign in to manage your own files and sharing links.</p><><button type="button" className="google-login-button" onClick={signInWithGoogle} disabled={authBusy}>Continue with Google</button><div className="auth-divider"><span>OR CONTINUE WITH EMAIL</span></div></>{authMode==="register"&&<input required minLength={2} maxLength={60} placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>}<input required type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/><input required minLength={8} type="password" placeholder="Password (at least 8 characters)" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>{notice&&<div className="notice">{notice}</div>}<button className="primary full" disabled={authBusy}>{authBusy?"Please wait…":authMode==="register"?"Create account":"Sign in"}</button><button type="button" className="textbtn" onClick={()=>{setAuthMode(authMode==="register"?"login":"register");setNotice("");}}>{authMode==="register"?"Already have an account? Sign in":"New to ShareDabba? Create account"}</button></form></div>;
   return <div className="shell">
     <aside className={`sidebar ${mobile?"show":""}`}>
       <div className="brand"><div className="brandmark">S</div><span>Share<span className="purple">Dabba</span></span><button className="close" onClick={()=>setMobile(false)}>×</button></div>
