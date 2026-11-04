@@ -13,7 +13,9 @@ export default function App() {
   const [notice,setNotice] = useState("Cloud uploads are enabled. Upload files to your creator account.");
   const [mobile,setMobile] = useState(false);
   const [selected,setSelected] = useState<FileItem|null>(null);
-  const [copied,setCopied] = useState(false);\n  const [renameValue,setRenameValue] = useState("");\n  const [actionBusy,setActionBusy] = useState(false);
+  const [copied,setCopied] = useState(false);
+  const [renameValue,setRenameValue] = useState("");
+  const [actionBusy,setActionBusy] = useState(false);
 
   const [uploadBusy,setUploadBusy] = useState(false);
   const [filesLoading,setFilesLoading] = useState(false);
@@ -149,7 +151,7 @@ export default function App() {
           <section className="panel"><div className="panelhead"><div><h3>Getting started</h3><p>Prepare your creator workspace</p></div><span className="stepcount">1/4</span></div><CheckRow done title="Workspace created" desc="Your ShareDabba prototype is ready."/><CheckRow title="Connect cloud storage" desc="Required for persistent file hosting."/><CheckRow title="Configure ad provider" desc="Only count verified ad impressions."/><CheckRow title="Enable creator payouts" desc="After real revenue and compliance checks."/></section></div>
           <section className="panel"><div className="panelhead"><div><h3>Monetization overview</h3><p>Illustrative layout — not actual earnings</p></div><span className="demo-pill">DEMO DATA</span></div><div className="emptychart"><TrendingUp size={26}/><b>Connect advertising to see verified revenue</b><span>Views, ad impressions and payable earnings will be tracked separately.</span></div></section>
         </>}
-        {tab==="My Files" && <section className="panel"><div className="panelhead"><div><h3>All files</h3><p>Manage your uploaded content</p></div><div className="search"><Search size={16}/><input placeholder="Search files..." value={query} onChange={e=>setQuery(e.target.value)}/></div></div><FileRows items={filtered} onSelect={setSelected}/></section>}
+        {tab==="My Files" && <section className="panel"><div className="panelhead"><div><h3>All files</h3><p>Manage your uploaded content</p></div><div className="search"><Search size={16}/><input placeholder="Search files..." value={query} onChange={e=>setQuery(e.target.value)}/></div></div><FileRows items={filtered} onSelect={x=>{setSelected(x);setRenameValue(x.name);setCopied(false);}}/></section>}
         {tab==="Upload" && <section className="panel uploadpanel"><div className="drop"><UploadCloud size={38}/><h2>Upload your files</h2><p>Choose videos, APKs, PDFs, ZIPs, images and other files.</p><label className="uploadbtn"><Plus size={17}/> Choose files<input type="file" multiple onChange={e=>upload(e.target.files)}/></label><small>Files are uploaded to Cloudinary and saved in your database. Maximum file size: 100 MB per file. Your uploads are private to your account.</small>{filesLoading&&<small>Loading your saved files…</small>}{uploadBusy&&<small>Uploading to cloud… please keep this page open.</small>}</div></section>}
         {tab==="Withdrawals" && <Placeholder icon={<Wallet/>} title="Creator withdrawals" desc="Withdrawal requests will become available after verified advertising revenue, creator balances and payment-provider integration are configured."/>}
         {tab==="Referrals" && <Placeholder icon={<Users/>} title="Referral tracking" desc="Referral links, attribution and eligible commission rules will be added after account authentication is connected."/>}
